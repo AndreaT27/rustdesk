@@ -20,6 +20,9 @@ import '../../common/widgets/peer_tab_page.dart';
 import '../../common/widgets/autocomplete.dart';
 import '../../models/platform_model.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
+// AGGIUNTA CUSTOM
+import 'package:http/http.dart' as http;
+
 
 class OnlineStatusWidget extends StatefulWidget {
   const OnlineStatusWidget({Key? key, this.onSvcStatusChanged})
@@ -200,7 +203,7 @@ class _ConnectionPageState extends State<ConnectionPage>
     with SingleTickerProviderStateMixin, WindowListener {
   /// Controller for the id input bar.
   final _idController = IDTextEditingController();
-
+  final TextEditingController _matricolaController = TextEditingController();
   final RxBool _idInputFocused = false.obs;
   final FocusNode _idFocusNode = FocusNode();
   final TextEditingController _idEditingController = TextEditingController();
@@ -245,93 +248,18 @@ class _ConnectionPageState extends State<ConnectionPage>
     _idFocusNode.dispose();
     _idEditingController.dispose();
     if (Get.isRegistered<IDTextEditingController>()) {
-      Get.delete<IDTextEditingController>();
-    }
-    if (Get.isRegistered<TextEditingController>()) {
-      Get.delete<TextEditingController>();
-    }
-    super.dispose();
-  }
-
-  @override
-  void onWindowEvent(String eventName) {
-    super.onWindowEvent(eventName);
-    if (eventName == 'minimize') {
-      isWindowMinimized = true;
-    } else if (eventName == 'maximize' || eventName == 'restore') {
-      if (isWindowMinimized && isWindows) {
-        // windows can't update when minimized.
-        Get.forceAppUpdate();
-      }
-      isWindowMinimized = false;
-    }
-  }
-
-  @override
-  void onWindowEnterFullScreen() {
-    // Remove edge border by setting the value to zero.
-    stateGlobal.resizeEdgeSize.value = 0;
-  }
-
-  @override
-  void onWindowLeaveFullScreen() {
-    // Restore edge border to default edge size.
-    stateGlobal.resizeEdgeSize.value = stateGlobal.isMaximized.isTrue
-        ? kMaximizeEdgeSize
-        : windowResizeEdgeSize;
-  }
-
-  @override
-  void onWindowClose() {
-    super.onWindowClose();
-    bind.mainOnMainWindowClose();
-  }
-
-  void onFocusChanged() {
-    _idInputFocused.value = _idFocusNode.hasFocus;
-    if (_idFocusNode.hasFocus) {
-      if (_allPeersLoader.needLoad) {
-        _allPeersLoader.getAllPeers();
-      }
-
-      final textLength = _idEditingController.value.text.length;
-      // Select all to facilitate removing text, just following the behavior of address input of chrome.
-      _idEditingController.selection =
-          TextSelection(baseOffset: 0, extentOffset: textLength);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isOutgoingOnly = bind.isOutgoingOnly();
-    return Column(
-      children: [
-        Expanded(
-            child: Column(
-          children: [
-            Row(
-              children: [
-                Flexible(child: _buildRemoteIDTextField(context)),
-              ],
-            ).marginOnly(top: 22),
-            SizedBox(height: 12),
-            Divider().paddingOnly(right: 12),
-            Expanded(child: PeerTabPage()),
-          ],
-        ).paddingOnly(left: 12.0)),
-        if (!isOutgoingOnly) const Divider(height: 1),
-        if (!isOutgoingOnly) OnlineStatusWidget()
-      ],
-    );
-  }
-
-  /// Callback for the connect button.
+    /// Callback for the connect button.
   /// Connects to the selected peer.
   void onConnect(
       {bool isFileTransfer = false,
       bool isViewCamera = false,
       bool isTerminal = false}) {
     var id = _idController.id;
+    var matricola = _matricolaController.text; // SALVIAMO LA MATRICOLA
+    
+    // Stampiamo in console per test
+    debugPrint("--- TEST VAMAG --- ID: $id | Matricola: $matricola");
+
     connect(context, id,
         isFileTransfer: isFileTransfer,
         isViewCamera: isViewCamera,
@@ -346,7 +274,7 @@ class _ConnectionPageState extends State<ConnectionPage>
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
       decoration: BoxDecoration(
           borderRadius: const BorderRadius.all(Radius.circular(13)),
-          border: Border.all(color: Theme.of(context).colorScheme.background)),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.background)),
       child: Ink(
         child: Column(
           children: [
@@ -512,6 +440,29 @@ class _ConnectionPageState extends State<ConnectionPage>
                 )),
               ],
             ),
+            
+            // 👇👇👇 CAMPO MATRICOLA VAMAG INSERITO CORRETTAMENTE QUI 👇👇👇
+            const SizedBox(height: 15),
+            TextField(
+              controller: _matricolaController,
+              maxLength: 50,
+              decoration: InputDecoration(
+                counterText: '', // Nasconde il numerino "0/50" sotto
+                hintText: 'Inserisci Matricola Vamag',
+                contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(13),
+                  borderSide: BorderSide(color: Theme.of(context).dividerColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(13),
+                  borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+                ),
+              ),
+              style: const TextStyle(fontSize: 18),
+            ),
+            // 👆👆👆 FINE CAMPO MATRICOLA 👆👆👆
+
             Padding(
               padding: const EdgeInsets.only(top: 13.0),
               child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
@@ -569,17 +520,17 @@ class _ConnectionPageState extends State<ConnectionPage>
                                     ),
                                   ]
                                       .map((e) => MenuEntryButton<String>(
-                                            childBuilder: (TextStyle? style) =>
-                                                Text(
-                                              translate(e.$1),
-                                              style: style,
-                                            ),
-                                            proc: () => e.$2(),
-                                            padding: EdgeInsets.symmetric(
-                                                horizontal:
-                                                    kDesktopMenuPadding.left),
-                                            dismissOnClicked: true,
-                                          ))
+                                          childBuilder: (TextStyle? style) =>
+                                              Text(
+                                                translate(e.$1),
+                                                style: style,
+                                              ),
+                                          proc: () => e.$2(),
+                                          padding: EdgeInsets.symmetric(
+                                              horizontal:
+                                                  kDesktopMenuPadding.left),
+                                          dismissOnClicked: true,
+                                        ))
                                       .map((e) => e.build(
                                           context,
                                           const MenuConfig(
